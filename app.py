@@ -67,6 +67,18 @@ credit_data["Credit Score"] = (
 credit_data["Risk Rating"] = credit_data["Credit Score"].apply(
     lambda x: "🟢 Low Risk" if x > 6 else "🟡 Medium Risk" if x > 4 else "🔴 High Risk"
 )
+REGION_COLORS = {
+    "Europe":       "#636EFA",
+    "North America":"#EF553B",
+    "Middle East":  "#00CC96",
+    "Asia":         "#AB63FA",
+}
+RISK_COLORS = {
+    "🟢 Low Risk":    "green",
+    "🟡 Medium Risk": "orange",
+    "🔴 High Risk":   "red",
+}
+NB_WB_COLORS = {"Narrowbody": "#1f77b4", "Widebody": "#ff7f0e"}
 
 tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "Market Overview",
@@ -86,7 +98,7 @@ with tab1:
         fig1 = px.bar(
             fleet_data.sort_values("Fleet Size", ascending=True),
             x="Fleet Size", y="Airline", orientation="h",
-            title="Fleet Size by Airline", color="Region",
+            title="Fleet Size by Airline", color="Region", color_discrete_map=REGION_COLORS
         )
         st.plotly_chart(fig1, use_container_width=True)
 
@@ -94,7 +106,7 @@ with tab1:
         fig2 = px.bar(
             fleet_data.sort_values("% Leased", ascending=True),
             x="% Leased", y="Airline", orientation="h",
-            title="% of Fleet Leased by Airline", color="Region",
+            title="% of Fleet Leased by Airline", color="Region", color_discrete_map=REGION_COLORS
         )
         st.plotly_chart(fig2, use_container_width=True)
 
@@ -201,11 +213,7 @@ with tab4:
             color="Risk Rating",
             text="Airline",
             title="Airline Credit Risk Map — Debt vs Profitability",
-            color_discrete_map={
-                "🟢 Low Risk": "green",
-                "🟡 Medium Risk": "orange",
-                "🔴 High Risk": "red"
-            }
+            color_discrete_map=RISK_COLORS
         )
         fig6.update_traces(textposition="top center")
         st.plotly_chart(fig6, use_container_width=True)
@@ -224,11 +232,7 @@ with tab4:
         x="Credit Score", y="Airline", orientation="h",
         color="Risk Rating",
         title="Overall Lessee Credit Score by Airline",
-        color_discrete_map={
-            "🟢 Low Risk": "green",
-            "🟡 Medium Risk": "orange",
-            "🔴 High Risk": "red"
-        }
+        color_discrete_map=RISK_COLORS
     )
     st.plotly_chart(fig7, use_container_width=True)
 
@@ -501,7 +505,7 @@ with tab6:
         comp_df, x="Lessor", y="Percentage", color="Type",
         title=f"Fleet Composition: {lessor_a} vs {lessor_b}",
         barmode="stack",
-        color_discrete_map={"Narrowbody": "#1f77b4", "Widebody": "#ff7f0e"}
+        color_discrete_map=NB_WB_COLORS
     )
     st.plotly_chart(fig_comp, use_container_width=True)
 
