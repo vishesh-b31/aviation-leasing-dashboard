@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import numpy as np
+import joblib
 
 st.set_page_config(page_title="Aviation Leasing Dashboard", layout="wide")
 
@@ -80,14 +81,15 @@ RISK_COLORS = {
 }
 NB_WB_COLORS = {"Narrowbody": "#1f77b4", "Widebody": "#ff7f0e"}
 
-tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
     "Market Overview",
     "Fleet Analysis",
     "Aircraft Value Curves",
     "Lessee Credit Risk",
     "Lease Rate Calculator",
     "Lessor Portfolios",
-    "Market News"
+    "Market News",
+    "ML Valuation"
 ])
 
 with tab1:
@@ -565,3 +567,137 @@ with tab7:
         st.error("Unable to load news feed. Check your internet connection.")
 
     st.info("💡 News updates automatically every time you refresh the page.")
+
+with tab8:
+    st.header("🤖 ML Aircraft Valuation")
+    st.markdown("Predict aircraft market value using a trained Gradient Boosting model")
+
+    model = joblib.load("value_model.pkl")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        aircraft = st.selectbox("Aircraft Type", list(aircraft_types.keys()))
+        age = st.slider("Aircraft Age", 0, 25, 5)
+        utilisation = st.slider("Utilisation Rate", 0.6, 1.0, 0.95)
+    with col2:
+        cycles = st.number_input("Total Cycles", 0, 50000, age * 1500)
+        market = st.slider("Market Condition", 0.8, 1.2, 1.0,
+                          help="1.0 = neutral, >1.0 = strong demand, <1.0 = downturn")
+
+    base = aircraft_types[aircraft]["base_value"]
+    prediction = model.predict([[age, utilisation, cycles, market, base]])[0]
+    traditional = base * ((1 - 0.05) ** age)
+    diff = prediction - traditional
+
+    # --- METRICS ---
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("ML Predicted Value", f"${prediction:.1f}M")
+    with col2:
+        st.metric("Traditional Curve Value", f"${traditional:.1f}M")
+    with col3:
+        st.metric("Difference", f"${diff:.1f}M",
+                 delta=f"{'ML higher' if diff > 0 else 'ML lower'}")
+
+    st.markdown("---")
+
+    col1, col2 = st.columns(2)
+
+    # --- CHART 1: ML vs Traditional across all ages ---
+    with col1:
+        ages = list(range(0, 26))
+        ml_values = [
+            model.predict([[a, utilisation, a * 1500, market, base]])[0]
+            for a in ages
+        ]
+        traditional_values = [base * ((1 - 0.05) ** a) for a in ages]
+
+        comparison_df = pd.DataFrame({
+            "Age (Years)": ages + ages,
+            "Value ($M)": ml_values + traditional_values,
+            "Method": ["ML Model"] * 26 + ["Traditional Curve"] * 26
+        })
+
+        fig_ml = px.line(
+            comparison_df, x="Age (Years)", y="Value ($M)",
+            color="Method", title=f"{aircraft} — ML vs Traditional Depreciation",
+            color_discrete_map={"ML Model": "#636EFA", "Traditional Curve": "#EF553B"},
+            markers=True
+        )
+        fig_ml.add_vline(x=age, line_dash="dash", annotation_text=f"Current Age {age}y")
+        st.plotly_chart(fig_ml, use_container_width=True)
+
+    # --- CHART 2: Market Condition Sensitivity ---
+    with col2:
+        market_range = np.linspace(0.8, 1.2, 20)
+        market_values = [
+            model.predict([[age, utilisation, cycles, m, base]])[0]
+            for m in market_range
+        ]
+
+        market_df = pd.DataFrame({
+            "Market Condition": market_range,
+            "Predicted Value ($M)": market_values
+        })
+
+        fig_market = px.line(
+            market_df, x="Market Condition", y="Predicted Value ($M)",
+            title="Value Sensitivity to Market Conditions",
+            color_discrete_sequence=["#00CC96"]
+        )
+        fig_market.add_vline(x=market, line_dash="dash",
+                             annotation_text=f"Current: {market:.2f}")
+        st.plotly_chart(fig_market, use_container_width=True)
+
+    col3, col4 = st.columns(2)
+
+    # --- CHART 3: Utilisation Sensitivity ---
+    with col3:
+        util_range = np.linspace(0.6, 1.0, 20)
+        util_values = [
+            model.predict([[age, u, cycles, market, base]])[0]
+            for u in util_range
+        ]
+
+        util_df = pd.DataFrame({
+            "Utilisation Rate": util_range,
+            "Predicted Value ($M)": util_values
+        })
+
+        fig_util = px.line(
+            util_df, x="Utilisation Rate", y="Predicted Value ($M)",
+            title="Value Sensitivity to Utilisation Rate",
+            color_discrete_sequence=["#AB63FA"]
+        )
+        fig_util.add_vline(x=utilisation, line_dash="dash",
+                           annotation_text=f"Current: {utilisation:.2f}")
+        st.plotly_chart(fig_util, use_container_width=True)
+
+    # --- CHART 4: ML Predicted Values Across All Aircraft at Current Age ---
+    with col4:
+        all_aircraft = list(aircraft_types.keys())
+        all_predictions = [
+            model.predict([[age, utilisation, cycles, market,
+                           aircraft_types[a]["base_value"]]])[0]
+            for a in all_aircraft
+        ]
+        all_traditional = [
+            aircraft_types[a]["base_value"] * ((1 - 0.05) ** age)
+            for a in all_aircraft
+        ]
+
+        compare_df = pd.DataFrame({
+            "Aircraft": all_aircraft * 2,
+            "Value ($M)": all_predictions + all_traditional,
+            "Method": ["ML Model"] * len(all_aircraft) + ["Traditional"] * len(all_aircraft)
+        })
+
+        fig_compare = px.bar(
+            compare_df, x="Aircraft", y="Value ($M)",
+            color="Method", barmode="group",
+            title=f"ML vs Traditional Values at Age {age} — All Aircraft",
+            color_discrete_map={"ML Model": "#636EFA", "Traditional": "#EF553B"}
+        )
+        st.plotly_chart(fig_compare, use_container_width=True)
+
+    st.info("💡 **Key Insight:** The ML model adjusts valuations based on utilisation and market conditions — factors the traditional straight-line depreciation curve ignores entirely.")
